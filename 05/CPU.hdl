@@ -1,0 +1,122 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/05/CPU.hdl
+
+/**
+ * The Hack CPU (Central Processing unit), consisting of an ALU,
+ * two registers named A and D, and a program counter named PC.
+ * The CPU is designed to fetch and execute instructions written in 
+ * the Hack machine language. In particular, functions as follows:
+ * Executes the inputted instruction according to the Hack machine 
+ * language specification. The D and A in the language specification
+ * refer to CPU-resident registers, while M refers to the external
+ * memory location addressed by A, i.e. to Memory[A]. The inM input 
+ * holds the value of this location. If the current instruction needs 
+ * to write a value to M, the value is placed in outM, the address 
+ * of the target location is placed in the addressM output, and the 
+ * writeM control bit is asserted. (When writeM==0, any value may 
+ * appear in outM). The outM and writeM outputs are combinational: 
+ * they are affected instantaneously by the execution of the current 
+ * instruction. The addressM and pc outputs are clocked: although they 
+ * are affected by the execution of the current instruction, they commit 
+ * to their new values only in the next time step. If reset==1 then the 
+ * CPU jumps to address 0 (i.e. pc is set to 0 in next time step) rather 
+ * than to the address resulting from executing the current instruction. 
+ */
+
+CHIP CPU {
+
+    IN  inM[16],         // M value input  (M = contents of RAM[A])
+        instruction[16], // Instruction for execution
+        reset;           // Signals whether to re-start the current
+                         // program (reset==1) or continue executing
+                         // the current program (reset==0).
+
+    OUT outM[16],        // M value output
+        writeM,          // Write to M? 
+        addressM[15],    // Address in data memory (of M)
+        pc[15];          // address of next instruction
+
+    PARTS:
+    // Put your code here:
+	//first mux and A register
+	Mux16(a=instruction, b=ALUout, sel=instruction[15],
+			out=ARegisterins);
+	Not(in=instruction[15], out=Aload1);
+	And(a=instruction[15], b=instruction[5], out=Aload2);
+	Or(a=Aload1, b=Aload2, out=Aload);
+	ARegister(in=ARegisterins, load=Aload,
+			out=chosenins, out[0..14]=addressM);
+	
+	//second mux ,ALU and DM register
+	Mux16(a=chosenins, b=inM, sel=instruction[12], out=ALUin);
+	ALU(x=DRegisterins, y=ALUin,
+		zx=instruction[11],
+		nx=instruction[10],
+		zy=instruction[9],
+		ny=instruction[8],
+		f=instruction[7],
+		no=instruction[6],
+		out=ALUout,out=outM, zr=zr, ng=ng);
+	And(a=instruction[15], b=instruction[4], out=Dload);
+	DRegister(in=ALUout, load=Dload, out=DRegisterins);
+	And(a=instruction[15], b=instruction[3], out=writeM);
+	
+	//PC logic
+	Not(in=ng, out=notng);
+	Not(in=zr, out=notzr);
+	Not(in=instruction[2], out=notj1);
+	Not(in=instruction[1], out=notj2);
+	Not(in=instruction[0], out=notj3);
+	
+	//j1, j2, j3=1,1,1
+	And(a=instruction[0], b=instruction[1], out=st11);
+	And(a=st11, b=instruction[2], out=o1);
+	
+	//j1, j2, j3=1,1,0
+	And(a=instruction[2], b=instruction[1], out=st21);
+	And(a=st21, b=notj3, out=st22);
+	Or(a=zr, b=ng, out=st23);
+	And(a=st22, b=st23, out=o2);
+	
+	//j1, j2, j3=1,0,1
+	And(a=instruction[2], b=notj2, out=st31);
+	And(a=st31, b=instruction[0], out=st32);
+	And(a=st32, b=notzr, out=o3);
+	
+	//j1, j2, j3=1,0,0
+	And(a=instruction[2], b=notj2, out=st51);
+	And(a=st51, b=notj3, out=st52);
+	And(a=st52, b=notzr, out=st53);
+	And(a=st53, b=ng, out=o4);
+	
+	//j1, j2, j3=0,1,1
+	And(a=notj1, b=instruction[1], out=st61);
+	And(a=st61, b=instruction[0], out=st62);
+	And(a=st62, b=notng, out=o5);
+	
+	//j1, j2, j3=0,1,0
+	And(a=notj1, b=instruction[1], out=st81);
+	And(a=st81, b=notj3, out=st82);
+	And(a=st82, b=zr, out=st83);
+	And(a=st83, b=notng, out=o6);
+	
+	//j1, j2, j3=0,0,1
+	And(a=notj1, b=notj2, out=st91);
+	And(a=st91, b=instruction[0], out=st92);
+	And(a=st92, b=notzr, out=st93);
+	And(a=st93, b=notng, out=o7);
+	
+	Or(a=o1, b=o2, out=l1);
+	Or(a=l1, b=o3, out=l2);
+	Or(a=l2, b=o4, out=l3);
+	Or(a=l3, b=o5, out=l4);
+	Or(a=l4, b=o6, out=l5);
+	Or(a=l5, b=o7, out=Jumpload);
+	
+	And(a=instruction[15], b=Jumpload, out=PCload);
+	Not(in=PCload, out=notPCload);
+	PC(in=chosenins, load=PCload, inc=notPCload, reset=reset, 
+			out[0..14]=pc);
+}
